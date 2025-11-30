@@ -5,8 +5,7 @@
     <title>WeedVerse® POC</title>
     
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-    <script src="https://unpkg.com/aframe-orbit-controls@1.3.0/dist/aframe-orbit-controls.min.js"></script>
-
+    
     <script>
       if (typeof THREE !== 'undefined') {
         if (!THREE.Quaternion.prototype.inverse) {
@@ -24,26 +23,45 @@
     <script>
       const CONFIG = {
           product: {
-             // ✅ Now using the real symbol with a custom font
-             buttonText: "WeedVerse® Website", 
+             buttonText: "WeedVerse Website", 
+             // UPDATED LINK
              link: "https://weedverse.org/shop",
              modelUrl: "https://raw.githubusercontent.com/foti1/wverse/0f07c5e8dfc49840ce972d53d5a3ba5b47a4b780/cwhand.glb",
              scale: "0.1 0.1 0.1" 
           }
       };
 
-      AFRAME.registerComponent('scroll-move', {
+      // ==================================================
+      // COMPONENT: MOVEMENT (Scroll + Mobile Tap)
+      // ==================================================
+      AFRAME.registerComponent('move-controls', {
         init: function () {
           this.speed = 2.5;
+          
+          // 1. DESKTOP: Scroll Wheel
           window.addEventListener('wheel', (e) => {
+            this.moveCamera(e.deltaY > 0 ? -1 : 1);
+          });
+
+          // 2. MOBILE: Two-finger tap to move forward
+          this.el.sceneEl.canvas.addEventListener('touchstart', (e) => {
+             if (e.touches.length === 2) {
+                 this.moveCamera(1); // Move forward on double touch
+             }
+          });
+        },
+
+        moveCamera: function (directionSign) {
             const rig = this.el;
             const camera = document.querySelector('[camera]');
             const direction = new THREE.Vector3();
             camera.object3D.getWorldDirection(direction);
             direction.y = 0; 
             direction.normalize();
-            const moveStrength = e.deltaY > 0 ? -this.speed : this.speed;
+            
+            const moveStrength = this.speed * directionSign;
             const currentPos = rig.getAttribute('position');
+            
             rig.removeAttribute('animation');
             rig.setAttribute('animation', {
                 property: 'position',
@@ -51,32 +69,65 @@
                 dur: 150,
                 easing: 'linear'
             });
-          });
         }
       });
 
-      // PAN CONTROLS
+      // ==================================================
+      // COMPONENT: PAN CONTROLS (Right Click + Mobile Drag)
+      // ==================================================
       AFRAME.registerComponent('pan-controls', {
         init: function () {
           this.panning = false;
           this.cameraObj = this.el.object3D;
           this.panSpeed = 0.01; 
+          this.touchStart = { x: 0, y: 0 };
 
+          // --- DESKTOP MOUSE ---
           window.addEventListener('mousedown', (e) => {
-            if (e.button === 2) { 
-                this.panning = true;
-            }
+            if (e.button === 2) this.panning = true;
           });
-
           window.addEventListener('mouseup', () => {
             this.panning = false;
           });
-
           window.addEventListener('mousemove', (e) => {
             if (!this.panning) return;
-            this.cameraObj.translateX(-e.movementX * this.panSpeed);
-            this.cameraObj.translateY(e.movementY * this.panSpeed);
+            this.panCamera(e.movementX, e.movementY);
           });
+
+          // --- MOBILE TOUCH ---
+          const canvas = this.el.sceneEl.canvas;
+          canvas.addEventListener('touchstart', (e) => {
+             if (e.touches.length === 1) {
+                 this.panning = true;
+                 this.touchStart.x = e.touches[0].clientX;
+                 this.touchStart.y = e.touches[0].clientY;
+             }
+          }, {passive: false});
+
+          canvas.addEventListener('touchend', () => {
+             this.panning = false;
+          });
+
+          canvas.addEventListener('touchmove', (e) => {
+             if (!this.panning || e.touches.length !== 1) return;
+             // Prevent scrolling the webpage while dragging
+             e.preventDefault(); 
+             
+             const deltaX = e.touches[0].clientX - this.touchStart.x;
+             const deltaY = e.touches[0].clientY - this.touchStart.y;
+             
+             // Invert X for touch to feel natural (drag world vs drag camera)
+             this.panCamera(-deltaX, -deltaY); 
+
+             this.touchStart.x = e.touches[0].clientX;
+             this.touchStart.y = e.touches[0].clientY;
+          }, {passive: false});
+        },
+
+        panCamera: function(deltaX, deltaY) {
+            // translateX/Y moves the camera relative to where it's looking
+            this.cameraObj.translateX(-deltaX * this.panSpeed);
+            this.cameraObj.translateY(deltaY * this.panSpeed);
         }
       });
 
@@ -114,8 +165,8 @@
       <a-plane id="floor" class="walkable" position="0 0 -4" rotation="-90 0 0" width="100" height="100" color="#222" material="src: https://cdn.aframe.io/a-painter/images/floor.jpg; repeat: 50 50"></a-plane>
       
       <a-text 
-        value="WeedVerse®" 
-        font="https://cdn.jsdelivr.net/gh/etiennepinchon/aframe-fonts/fonts/exo2/Exo2-Bold.json"
+        value="WeedVerse" 
+        font="exo2bold"
         position="0 0.02 -1.5" 
         rotation="-90 0 0" 
         align="center" 
@@ -140,13 +191,13 @@
                         class="clickable"
                         material="color: black; opacity: 0.9; side: double">
               </a-entity>
-              <a-text class="dynamic-text" font="https://cdn.jsdelivr.net/gh/etiennepinchon/aframe-fonts/fonts/exo2/Exo2-Bold.json" value="LOADING..." align="center" position="0 0 0.01" color="white" width="4" side="double"></a-text>
-              <a-text class="dynamic-text" font="https://cdn.jsdelivr.net/gh/etiennepinchon/aframe-fonts/fonts/exo2/Exo2-Bold.json" value="LOADING..." align="center" position="0 0 -0.01" rotation="0 180 0" color="white" width="4" side="double"></a-text>
+              <a-text class="dynamic-text" font="exo2bold" value="LOADING..." align="center" position="0 0 0.01" color="white" width="4" side="double"></a-text>
+              <a-text class="dynamic-text" font="exo2bold" value="LOADING..." align="center" position="0 0 -0.01" rotation="0 180 0" color="white" width="4" side="double"></a-text>
           </a-entity>
       </a-entity>
 
       <a-entity id="player-rig"
-                scroll-move
+                move-controls
                 position="0 0 4"
                 wasd-controls="acceleration: 20">
         
@@ -165,5 +216,3 @@
     </a-scene>
   </body>
 </html>
-
-
