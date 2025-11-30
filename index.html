@@ -5,18 +5,18 @@
     <title>WeedVerse® POC</title>
     
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
-    
+
+    <style>
+        /* CRITICAL: Prevents the whole page from scrolling when you drag on mobile */
+        html, body { overflow: hidden; position: fixed; width: 100%; height: 100%; }
+        canvas { touch-action: none; }
+    </style>
+
     <script>
       if (typeof THREE !== 'undefined') {
-        if (!THREE.Quaternion.prototype.inverse) {
-          THREE.Quaternion.prototype.inverse = THREE.Quaternion.prototype.invert;
-        }
-        if (!THREE.Matrix4.prototype.inverse) {
-          THREE.Matrix4.prototype.inverse = THREE.Matrix4.prototype.invert;
-        }
-        if (!THREE.Math) {
-          THREE.Math = THREE.MathUtils;
-        }
+        if (!THREE.Quaternion.prototype.inverse) THREE.Quaternion.prototype.inverse = THREE.Quaternion.prototype.invert;
+        if (!THREE.Matrix4.prototype.inverse) THREE.Matrix4.prototype.inverse = THREE.Matrix4.prototype.invert;
+        if (!THREE.Math) THREE.Math = THREE.MathUtils;
       }
     </script>
 
@@ -24,7 +24,6 @@
       const CONFIG = {
           product: {
              buttonText: "WeedVerse Website", 
-             // UPDATED LINK
              link: "https://weedverse.org/shop",
              modelUrl: "https://raw.githubusercontent.com/foti1/wverse/0f07c5e8dfc49840ce972d53d5a3ba5b47a4b780/cwhand.glb",
              scale: "0.1 0.1 0.1" 
@@ -32,123 +31,145 @@
       };
 
       // ==================================================
-      // COMPONENT: MOVEMENT (Scroll + Mobile Tap)
+      // COMPONENT: UNIVERSAL CONTROLS (Mobile + Desktop)
       // ==================================================
-      AFRAME.registerComponent('move-controls', {
+      AFRAME.registerComponent('universal-controls', {
         init: function () {
-          this.speed = 2.5;
+          this.camera = this.el.object3D;
           
-          // 1. DESKTOP: Scroll Wheel
-          window.addEventListener('wheel', (e) => {
-            this.moveCamera(e.deltaY > 0 ? -1 : 1);
-          });
+          // Settings
+          this.touchSensitivity = 0.008; 
+          this.scrollSensitivity = 0.5;
+          this.mousePanSensitivity = 0.01;
 
-          // 2. MOBILE: Two-finger tap to move forward
-          this.el.sceneEl.canvas.addEventListener('touchstart', (e) => {
-             if (e.touches.length === 2) {
-                 this.moveCamera(1); // Move forward on double touch
-             }
-          });
-        },
-
-        moveCamera: function (directionSign) {
-            const rig = this.el;
-            const camera = document.querySelector('[camera]');
-            const direction = new THREE.Vector3();
-            camera.object3D.getWorldDirection(direction);
-            direction.y = 0; 
-            direction.normalize();
-            
-            const moveStrength = this.speed * directionSign;
-            const currentPos = rig.getAttribute('position');
-            
-            rig.removeAttribute('animation');
-            rig.setAttribute('animation', {
-                property: 'position',
-                to: `${currentPos.x + (direction.x * moveStrength)} ${currentPos.y} ${currentPos.z + (direction.z * moveStrength)}`,
-                dur: 150,
-                easing: 'linear'
-            });
-        }
-      });
-
-      // ==================================================
-      // COMPONENT: PAN CONTROLS (Right Click + Mobile Drag)
-      // ==================================================
-      AFRAME.registerComponent('pan-controls', {
-        init: function () {
-          this.panning = false;
-          this.cameraObj = this.el.object3D;
-          this.panSpeed = 0.01; 
+          // State
+          this.isRightClicking = false;
           this.touchStart = { x: 0, y: 0 };
-
-          // --- DESKTOP MOUSE ---
-          window.addEventListener('mousedown', (e) => {
-            if (e.button === 2) this.panning = true;
-          });
-          window.addEventListener('mouseup', () => {
-            this.panning = false;
-          });
-          window.addEventListener('mousemove', (e) => {
-            if (!this.panning) return;
-            this.panCamera(e.movementX, e.movementY);
-          });
-
-          // --- MOBILE TOUCH ---
-          const canvas = this.el.sceneEl.canvas;
-          canvas.addEventListener('touchstart', (e) => {
-             if (e.touches.length === 1) {
-                 this.panning = true;
-                 this.touchStart.x = e.touches[0].clientX;
-                 this.touchStart.y = e.touches[0].clientY;
-             }
-          }, {passive: false});
-
-          canvas.addEventListener('touchend', () => {
-             this.panning = false;
-          });
-
-          canvas.addEventListener('touchmove', (e) => {
-             if (!this.panning || e.touches.length !== 1) return;
-             // Prevent scrolling the webpage while dragging
-             e.preventDefault(); 
-             
-             const deltaX = e.touches[0].clientX - this.touchStart.x;
-             const deltaY = e.touches[0].clientY - this.touchStart.y;
-             
-             // Invert X for touch to feel natural (drag world vs drag camera)
-             this.panCamera(-deltaX, -deltaY); 
-
-             this.touchStart.x = e.touches[0].clientX;
-             this.touchStart.y = e.touches[0].clientY;
-          }, {passive: false});
+          
+          // --- EVENT LISTENERS ---
+          this.bindMethods();
+          this.addEventListeners();
         },
 
-        panCamera: function(deltaX, deltaY) {
-            // translateX/Y moves the camera relative to where it's looking
-            this.cameraObj.translateX(-deltaX * this.panSpeed);
-            this.cameraObj.translateY(deltaY * this.panSpeed);
+        bindMethods: function () {
+          this.onWheel = this.onWheel.bind(this);
+          this.onMouseDown = this.onMouseDown.bind(this);
+          this.onMouseUp = this.onMouseUp.bind(this);
+          this.onMouseMove = this.onMouseMove.bind(this);
+          this.onTouchStart = this.onTouchStart.bind(this);
+          this.onTouchMove = this.onTouchMove.bind(this);
+        },
+
+        addEventListeners: function () {
+          const canvas = this.el.sceneEl.canvas;
+          
+          // Desktop
+          window.addEventListener('wheel', this.onWheel);
+          window.addEventListener('mousedown', this.onMouseDown);
+          window.addEventListener('mouseup', this.onMouseUp);
+          window.addEventListener('mousemove', this.onMouseMove);
+
+          // Mobile (Passive: false is required to prevent scrolling)
+          canvas.addEventListener('touchstart', this.onTouchStart, {passive: false});
+          canvas.addEventListener('touchmove', this.onTouchMove, {passive: false});
+        },
+
+        // --- DESKTOP LOGIC ---
+        onWheel: function (e) {
+            // Scroll Up = Move Forward (-Z), Down = Move Back (+Z)
+            const delta = e.deltaY > 0 ? 1 : -1;
+            this.moveCameraZ(delta * this.scrollSensitivity);
+        },
+
+        onMouseDown: function (e) {
+            if (e.button === 2) this.isRightClicking = true;
+        },
+
+        onMouseUp: function () {
+            this.isRightClicking = false;
+        },
+
+        onMouseMove: function (e) {
+            if (!this.isRightClicking) return;
+            // Right Click Drag: Pan X/Y
+            this.moveCameraX(-e.movementX * this.mousePanSensitivity);
+            this.moveCameraY(e.movementY * this.mousePanSensitivity);
+        },
+
+        // --- MOBILE LOGIC ---
+        onTouchStart: function (e) {
+            if (e.touches.length === 2) {
+                this.touchStart.x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                this.touchStart.y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            }
+        },
+
+        onTouchMove: function (e) {
+            // We only care about 2-finger drag
+            if (e.touches.length !== 2) return;
+            
+            // Prevent Browser Scroll
+            e.preventDefault(); 
+
+            // Calculate current midpoint
+            const currentX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            const currentY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+            const deltaX = currentX - this.touchStart.x;
+            const deltaY = currentY - this.touchStart.y;
+
+            // 2-Finger Horizontal = Pan Left/Right
+            this.moveCameraX(-deltaX * this.touchSensitivity);
+
+            // 2-Finger Vertical = Move Forward/Back (Zoom)
+            this.moveCameraZ(-deltaY * this.touchSensitivity * 3); // *3 to make zooming faster
+
+            // Reset start for next frame
+            this.touchStart.x = currentX;
+            this.touchStart.y = currentY;
+        },
+
+        // --- HELPER MOVEMENT FUNCTIONS ---
+        // Moves camera relative to where it is looking
+        moveCameraZ: function (distance) {
+            const direction = new THREE.Vector3();
+            this.camera.getWorldDirection(direction);
+            direction.y = 0; // Keep movement flat
+            direction.normalize();
+            this.camera.position.addScaledVector(direction, -distance); // Invert distance for natural feel
+        },
+
+        moveCameraX: function (distance) {
+            this.camera.translateX(distance);
+        },
+
+        moveCameraY: function (distance) {
+            this.camera.translateY(distance);
         }
       });
 
+      // ==================================================
+      // INIT SCENE
+      // ==================================================
       document.addEventListener('contextmenu', event => event.preventDefault());
 
       window.onload = function() {
+          // Set Model
           document.querySelector('#product-entity').setAttribute('gltf-model', CONFIG.product.modelUrl);
           
-          const openProductLink = () => {
-              window.open(CONFIG.product.link, '_blank');
-          };
+          // Link Logic
+          const openProductLink = () => { window.open(CONFIG.product.link, '_blank'); };
 
+          // Update UI Text
           const textFields = document.querySelectorAll('.dynamic-text');
-          textFields.forEach(text => {
-              text.setAttribute('value', CONFIG.product.buttonText);
-          });
+          textFields.forEach(text => { text.setAttribute('value', CONFIG.product.buttonText); });
 
+          // Resize Button
           const bgPlate = document.querySelector('#btn-bg');
           const estimatedWidth = (CONFIG.product.buttonText.length * 0.05) + 0.3; 
           bgPlate.setAttribute('geometry', { primitive: 'plane', height: 0.3, width: estimatedWidth });
           
+          // Add Click Listeners
           bgPlate.addEventListener('click', openProductLink);
           document.querySelector('#product-entity').addEventListener('click', openProductLink);
       };
@@ -197,16 +218,15 @@
       </a-entity>
 
       <a-entity id="player-rig"
-                move-controls
-                position="0 0 4"
-                wasd-controls="acceleration: 20">
+                universal-controls
+                position="0 0 4">
         
         <a-entity 
             id="head" 
             camera 
             position="0 1.6 0" 
-            look-controls="pointerLockEnabled: false"
-            pan-controls>
+            look-controls="pointerLockEnabled: false">
+            
             <a-entity cursor="fuse: false; rayOrigin: mouse;"
                       raycaster="objects: .clickable">
             </a-entity>
